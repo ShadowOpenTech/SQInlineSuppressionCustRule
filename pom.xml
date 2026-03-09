@@ -17,7 +17,13 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.release>17</maven.compiler.release>
+        <!--
+            Use source/target instead of release for broader Maven 3.5.0 / JDK 17 compatibility.
+            The <release> flag was added in maven-compiler-plugin 3.6, but using source/target
+            here avoids any edge cases and is the safest approach for Maven 3.5.0.
+        -->
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
 
         <!--
             Plugin API version 10.11.0.2468 (from official SonarQube plugin example).
@@ -80,18 +86,28 @@
 
     <build>
         <plugins>
+            <!--
+                maven-compiler-plugin 3.11.0 requires Maven >= 3.3.1, compatible with Maven 3.5.0.
+                Versions 3.12+ require Maven >= 3.6.3 and are NOT compatible with Maven 3.5.0.
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
+                <version>3.11.0</version>
                 <configuration>
-                    <release>17</release>
+                    <source>17</source>
+                    <target>17</target>
                 </configuration>
             </plugin>
+            <!--
+                maven-surefire-plugin 3.0.0 requires Maven >= 3.3.1, compatible with Maven 3.5.0.
+                Version 3.2.5 also supports Maven 3.3.1+ but pinning to 3.0.0 for
+                maximum stability on the target environment.
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
+                <version>3.0.0</version>
             </plugin>
             <!--
                 JAR manifest entries required by SonarQube to load this as a plugin.
@@ -100,7 +116,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
-                <version>3.4.1</version>
+                <version>3.3.0</version>
                 <configuration>
                     <archive>
                         <manifestEntries>
