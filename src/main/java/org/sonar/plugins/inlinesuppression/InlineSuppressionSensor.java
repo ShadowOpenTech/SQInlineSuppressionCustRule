@@ -29,23 +29,42 @@ public class InlineSuppressionSensor implements Sensor {
 
     @Override
     public void describe(SensorDescriptor descriptor) {
-        descriptor.name("Inline Suppression Audit Sensor");
+        descriptor.name("Inline Suppression Audit Sensor")
+                  .createIssuesForRuleRepositories(
+                      InlineSuppressionRulesDefinition.SUPPORTED_LANGUAGES.stream()
+                          .map(InlineSuppressionRulesDefinition::repositoryKey)
+                          .toArray(String[]::new)
+                  );
     }
 
     @Override
     public void execute(SensorContext context) {
-        FileSystem fs = context.fileSystem();
-        Iterable<InputFile> files = fs.inputFiles(
-            fs.predicates().hasType(InputFile.Type.MAIN)
-        );
+        try {
+            FileSystem fs = context.fileSystem();
+            Iterable<InputFile> files = fs.inputFiles(
+                fs.predicates().hasType(InputFile.Type.MAIN)
+            );
 
-        for (InputFile file : files) {
-            String language = file.language();
-            if (language == null
-                    || !InlineSuppressionRulesDefinition.SUPPORTED_LANGUAGES.contains(language)) {
-                continue;
+            for (InputFile file : files) {
+                String language = file.language();
+                if (language == null
+                        || !InlineSuppressionRulesDefinition.SUPPORTED_LANGUAGES.contains(language)) {
+                    continue;
+                }
+                try {
+                    scanFile(context, file, language);
+                } catch (Throwable t) {
+                    LOG.error("[InlineSuppressionPlugin] Unexpected failure scanning file {} — "
+                            + "skipping and continuing scan. Error: {}",
+                            file.uri(), t.toString());
+                    LOG.debug("[InlineSuppressionPlugin] Full stack trace for {}:", file.uri(), t);
+                }
             }
-            scanFile(context, file, language);
+        } catch (Throwable t) {
+            LOG.error("[InlineSuppressionPlugin] Sensor failed to initialize — "
+                    + "entire sensor skipped. SonarQube scan will continue normally. Error: {}",
+                    t.toString());
+            LOG.debug("[InlineSuppressionPlugin] Full stack trace:", t);
         }
     }
 

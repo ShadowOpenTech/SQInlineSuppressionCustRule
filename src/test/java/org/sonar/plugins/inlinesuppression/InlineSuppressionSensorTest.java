@@ -55,6 +55,10 @@ class InlineSuppressionSensorTest {
         sensor.describe(descriptor);
 
         verify(descriptor).name("Inline Suppression Audit Sensor");
+        String[] expectedKeys = InlineSuppressionRulesDefinition.SUPPORTED_LANGUAGES.stream()
+            .map(InlineSuppressionRulesDefinition::repositoryKey)
+            .toArray(String[]::new);
+        verify(descriptor).createIssuesForRuleRepositories(expectedKeys);
     }
 
     @Test
@@ -167,6 +171,96 @@ class InlineSuppressionSensorTest {
         verify(newIssue).forRule(ruleKeyCaptor.capture());
         assertThat(ruleKeyCaptor.getValue().repository()).isEqualTo("suppression-audit-py");
         assertThat(ruleKeyCaptor.getValue().rule()).isEqualTo("InlineSuppression");
+    }
+
+    // -----------------------------------------------------------------------
+    // Graceful failure handling
+    // -----------------------------------------------------------------------
+
+    @Test
+    void shouldContinueScanningRemainingFilesWhenOneFileThrowsStackOverflowError() throws Exception {
+        InputFile badFile = mock(InputFile.class);
+        InputFile goodFile = mock(InputFile.class);
+
+        when(context.fileSystem()).thenReturn(fileSystem);
+        when(fileSystem.predicates()).thenReturn(filePredicates);
+        when(filePredicates.hasType(InputFile.Type.MAIN)).thenReturn(mainPredicate);
+        when(fileSystem.inputFiles(mainPredicate)).thenReturn(List.of(badFile, goodFile));
+
+        when(badFile.language()).thenReturn("java");
+        when(badFile.contents()).thenThrow(new StackOverflowError());
+        when(badFile.uri()).thenReturn(URI.create("file:///test/Bad.java"));
+
+        when(goodFile.language()).thenReturn("java");
+        when(goodFile.contents()).thenReturn("public class Clean {}");
+
+        // Should not throw — bad file is skipped, good file is processed
+        sensor.execute(context);
+
+        verify(context, never()).newIssue();
+    }
+
+    @Test
+    void shouldContinueScanningRemainingFilesWhenOneFileThrowsRuntimeException() throws Exception {
+        InputFile badFile = mock(InputFile.class);
+        InputFile goodFile = mock(InputFile.class);
+
+        when(context.fileSystem()).thenReturn(fileSystem);
+        when(fileSystem.predicates()).thenReturn(filePredicates);
+        when(filePredicates.hasType(InputFile.Type.MAIN)).thenReturn(mainPredicate);
+        when(fileSystem.inputFiles(mainPredicate)).thenReturn(List.of(badFile, goodFile));
+
+        when(badFile.language()).thenReturn("java");
+        when(badFile.contents()).thenThrow(new RuntimeException("Unexpected processing error"));
+        when(badFile.uri()).thenReturn(URI.create("file:///test/Bad.java"));
+
+        when(goodFile.language()).thenReturn("java");
+        when(goodFile.contents()).thenReturn("public class Clean {}");
+
+        // Should not throw — scan continues past the bad file
+        sensor.execute(context);
+
+        verify(context, never()).newIssue();
+    }
+
+    @Test
+    void shouldNotThrowWhenSensorSetupFails() {
+        when(context.fileSystem()).thenThrow(new RuntimeException("FileSystem unavailable"));
+
+        // Outer catch must absorb the failure — scan continues normally
+        sensor.execute(context);
+    }
+
+    @Test
+    void shouldReportIssueInSecondFileWhenFirstFileFails() throws Exception {
+        InputFile badFile = mock(InputFile.class);
+        InputFile goodFile = mock(InputFile.class);
+
+        when(context.fileSystem()).thenReturn(fileSystem);
+        when(fileSystem.predicates()).thenReturn(filePredicates);
+        when(filePredicates.hasType(InputFile.Type.MAIN)).thenReturn(mainPredicate);
+        when(fileSystem.inputFiles(mainPredicate)).thenReturn(List.of(badFile, goodFile));
+
+        when(badFile.language()).thenReturn("java");
+        when(badFile.contents()).thenThrow(new StackOverflowError());
+        when(badFile.uri()).thenReturn(URI.create("file:///test/Bad.java"));
+
+        when(goodFile.language()).thenReturn("java");
+        when(goodFile.contents()).thenReturn("int x = 1; // NOSONAR");
+        when(goodFile.uri()).thenReturn(URI.create("file:///test/Good.java"));
+        when(goodFile.selectLine(anyInt())).thenReturn(textRange);
+        when(context.newIssue()).thenReturn(newIssue);
+        when(newIssue.forRule(any(RuleKey.class))).thenReturn(newIssue);
+        when(newIssue.newLocation()).thenReturn(newIssueLocation);
+        when(newIssueLocation.on(any(InputFile.class))).thenReturn(newIssueLocation);
+        when(newIssueLocation.at(any(TextRange.class))).thenReturn(newIssueLocation);
+        when(newIssueLocation.message(anyString())).thenReturn(newIssueLocation);
+        when(newIssue.at(any(NewIssueLocation.class))).thenReturn(newIssue);
+
+        sensor.execute(context);
+
+        // Issue from the good file must still be saved despite the first file failing
+        verify(newIssue).save();
     }
 
     // -----------------------------------------------------------------------
