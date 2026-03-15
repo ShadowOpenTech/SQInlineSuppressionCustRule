@@ -41,6 +41,7 @@ The plugin avoids false positives by ignoring:
 
 - **Java `@SuppressWarnings("all")` self-suppression** — The Java analyzer honors `@SuppressWarnings("all")` at scope level and suppresses ALL issues in the annotated element, including our plugin's issue. This is a SonarQube platform limitation. The plugin applies a line-offset workaround (reporting on the adjacent line), which works for Kotlin and Scala but may still be suppressed by Java's scope-level handling.
 - **NOSONAR line offset** — To avoid SonarQube's built-in `NoSonarFilter` (which suppresses ALL issues on NOSONAR lines, including ours), NOSONAR issues are reported on the line above (or below for line 1). The issue message includes the actual line number for reference.
+- **Single-line NOSONAR files (language-specific suppression)** — In files where a NOSONAR comment is the only real line of code (e.g., a `.py` file containing only `x = 1  # NOSONAR`), SonarQube's built-in `NoSonarFilter` may suppress the plugin's issue. This occurs when the language's own SonarQube analyzer (e.g., sonar-python) processes the `# NOSONAR` comment and registers that line with the filter before our plugin reports. Since the line-offset workaround requires at least 2 lines to redirect the issue away from the NOSONAR line, single-line files fall back to reporting on the same line — which the filter then suppresses. This is an extreme edge case with no impact on real production code, where NOSONAR comments always appear alongside actual source lines.
 
 ## Supported Languages
 
